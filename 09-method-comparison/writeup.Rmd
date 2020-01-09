@@ -1,0 +1,157 @@
+---
+title: "Simulation study"
+author: "Alice Wang"
+date: "11/1/2019"
+output: html_document
+---
+
+Coverage probability is an important operating characteristic of methods for constructing interval estimates, particularly confidence intervals. (See the previous deliverable for definitions and examples.)
+
+Idealy, a 95% confidence interval will capture the population parameter of interest in 95% of samples. One can also calculate 80% or 90% confidence intervals. In general, an X% confidence interval should capture the population parameter of interest in X% of samples.
+
+In this blog, I will perform a 2 × 4 × 2 factorial simulation study to compare the coverage probability of various methods of calculating 90% confidence intervals. The three factors in the experiment are
+
+
+### Generate Data
+The true, underlying distribution is either standard normal(mean = 0, sd =1 ) or gamma(shape = 1.4, scale = 3)
+
+```{r}
+require(dplyr)
+generate_data <- function(N, dist, sh=1.4, sc=3){ 
+  if(dist=="norm"){
+    rnorm(N) 
+  }else if(dist=="gamma"){
+    rgamma(N, shape=sh, scale=sc)
+  }
+}
+```
+
+### Estimate Confidence Interval
+There are four models to estimate 90% confidence interval for the parameter of interest:
+1. method of moments with normal
+2. method of moments with gamma
+3. kernel density estimation
+4. boostrap
+
+Use these methods to generate a new sample with same sample size in the last step and then calculte the parameter of interest(min/median). Repeat this process 5000 times and we will get 5000 parameter of interest(min/median).
+
+Let’s define the 90% confidence interval of the parameter of interest to be the middle 90% of sampling distribution of the parameter of interest.
+
+The lower confidence limit for parameter of interest is 0.05 quantile and the upper confidence limit for median is 0.95 quantile.
+
+
+```{r}
+estimate.ci <- function(data, mod, par.int, R=10, smoo=0.3){
+  N <- length(data)
+  sum.measure <- get(par.int)
+    
+  if(mod=="MMnorm"){
+    mm.mean <- mean(data)
+    mm.sd <- sd(data)
+    
+    samp.dist <- NA
+    for(i in 1:R){
+      sim.data <-rnorm(length(data), mm.mean, mm.sd)
+      if(par.int=="median"){
+        samp.dist[i] <- median(sim.data)
+      }else if(par.int=="min"){
+        samp.dist[i] <- min(sim.data)
+      }
+    }
+    return(quantile(samp.dist, c(0.05, 0.95)))
+    
+  }else if(mod=="MMgamma"){
+    mm.shape <- mean(data)^2/var(data)
+    mm.scale <- var(data)/mean(data)
+    
+    sim.data <- array(rgamma(length(data)*R, shape=mm.shape, scale=mm.scale), dim=c(N, R))
+    samp.dist <- apply(sim.data, 2, FUN=sum.measure)
+    return(quantile(samp.dist, c(0.05, 0.95)))
+    
+  }else if(mod=="KDE"){
+    ecdfstar <- function(t, data, smooth=smoo){
+        outer(t, data, function(a,b){ pnorm(a, b, smooth)}) %>% rowMeans
+    }
+    
+    tbl <- data.frame(
+        x = seq(min(data)-sd(data),max(data)+sd(data),
+                by = 0.01)
+    )
+    
+    tbl$p <- ecdfstar(tbl$x, data, smoo)
+    tbl <- tbl[!duplicated(tbl$p),]
+    
+    qkde <- function(ps, tbl){
+      rows <- cut(ps, tbl$p, labels = FALSE)
+      tbl[rows, "x"]
+    }
+    
+    U <- runif(N*R)
+    
+    sim.data <- array(qkde(U,tbl), dim=c(N, R))
+    samp.dist <- apply(sim.data, 2, sum.measure)
+    
+    return(quantile(samp.dist, c(0.05, 0.95), na.rm=TRUE))
+    
+  }else if(mod=="Boot"){
+    sim.data <- sample(data, N, replace=TRUE)
+    samp.dist<-apply(sim.data,2,sum.measure)
+    return(quantile(samp.dist,c(0.05,0.95)))
+  }
+}
+```
+
+### Capture Parameter
+A confidence interval will capture the true paramter if the lower confidence limit is less than the true parameter and the upper confidence limit is greater than the true parameter. Then let’s set a function to test whether the confidence interval captured the true parameter or not. The function will return 1 if the confidence interval captured the true parameter and return 0 if the confidence interval didn’t capture the true parameter.
+```{r}
+capture_par <- function(ci, true.par){
+  1*(ci[1] < true.par & true.par < ci[2])
+}
+```
+
+
+### Coverage Probability for each Combination
+The coverage probability is the proportion of the time that the interval contains the true value of parameter of interest.
+
+Repeat the function we generated before: 
+generate_data %>% estimate.ci %>% capture_par 1000 times 
+and then compute the mean of captures as coverage probability.
+
+The coverage probability for 16 combinations is shown in this table
+
+```{r}
+# One replicate
+N <- 201
+shape.set <- 1.4
+scale.set <- 3
+true.norm.med <- qnorm(0.5)
+true.norm.min <- mean(apply(array(rnorm(N*10000), dim=c(N, 10000)),2,min))
+true.gamma.med <- qgamma(0.5, shape = shape.set, scale=scale.set)
+true.gamma.min <- mean(apply(array(rgamma(N*10000, shape=shape.set, scale=scale.set), dim=c(N, 10000)),2,min))
+
+simsettings <- expand.grid(dist=c("norm", "gamma"), model=c("MMnorm", "MMgamma", "KDE", "Boot"), par.int=c("median", "min"), cov.prob=NA,  stringsAsFactors = FALSE, KEEP.OUT.ATTRS = FALSE)
+
+simsettings$truth <- c(true.norm.med, true.gamma.med, true.norm.med, true.gamma.med, true.norm.med, true.gamma.med, true.norm.med, true.gamma.med, true.norm.min, true.gamma.min, true.norm.min, true.gamma.min, true.norm.min, true.gamma.min, true.norm.min, true.gamma.min)
+
+for(k in c(1:2,4:10,12:16)){
+  dist1 <- simsettings[k,1]
+  model1 <- simsettings[k,2]
+  par.int1 <- simsettings[k,3]
+  true.par1 <- simsettings[k,5]
+  
+  cover <- NA
+  for(sims in 1:100){
+    cover[sims] <- generate_data(N, dist1) %>% estimate.ci(mod=model1, par.int=par.int1, R=1000) %>% capture_par(true.par = true.par1)
+  }
+  simsettings[k,4] <- mean(cover)
+}
+
+simsettings
+```
+
+
+We can see that for gamma distribution, if we use method of moments with normal to estimate median and min, the coverage probability is very small.
+
+For normal distribution, if we use method of moments with gamma to estimate min, the coverage probability is very small.
+
+The bootstrap method for min generates a low coverage probability.

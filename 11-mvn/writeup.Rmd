@@ -1,0 +1,80 @@
+---
+title: "Simulation study: Power and sample size calculations correlational studies"
+output: html_notebook
+---
+
+Power is the probability that the study will end in success when the true underlying correlation is, in fact, greater that 0.8. (Note the connection to Type II error (β): power = 1 - β.) Your collaborator needs you to estimate power for different combinations of sample size and the true population correlation. Let the sample size be 25, 50, 75, and 100. Let the population correlation range from 0.8 to 0.95.
+
+```{r}
+set.seed(20394)
+suppressPackageStartupMessages(require(mvtnorm))
+N <- 25
+rho <- .8
+null_correlation <- 0.8
+R <- 5000
+
+sigma <- array(c(1,rho,rho,1), c(2,2))
+mu <- c(0,0)
+
+detect <- rep(NA, R)
+for(i in 1:R){
+  data <- rmvnorm(N, mean = mu, sigma = sigma)
+  results <- cor.test(x = data[,1], y = data[,2], alternative = "greater")
+  detect[i] <- results$conf.int[1] > null_correlation
+}
+power <- mean(detect)
+```
+
+Generate two lists here, one stores the number of sample size, the other one stores correlation. Create a dateframe to put the value we just generated in.
+```{r}
+N_list <- seq(25,100,25)
+rho_list <- seq(0.8,0.95,0.01)
+df <- expand.grid(N=N_list,rho=rho_list,power=NA)
+```
+
+
+```{r}
+for (j in 1:nrow(df)) {
+  N <- df[j,1]
+  rho <- df[j,2]
+  null_correlation <- 0.8
+  R <- 5000
+  
+  sigma <- array(c(1,rho,rho,1), c(2,2))
+  mu <- c(0,0)
+  
+  detect <- rep(NA, R)
+  for(i in 1:R){
+    data <- rmvnorm(N, mean = mu, sigma = sigma)
+    results <- cor.test(x = data[,1], y = data[,2], alternative = "greater")
+    detect[i] <- results$conf.int[1] > null_correlation
+  }
+  power <- mean(detect)
+  df[j,3] <- power
+}
+```
+
+Load the library.
+```{r}
+library(tidyverse)
+library(ggplot2)
+```
+
+
+So here comes to the graph. First we will want to mutate the N to factor. then use ggplot to make the graph. 
+```{r}
+data.frame(df) %>%
+  mutate(N=factor(N)) %>%
+  ggplot(aes(x=rho,y=power))+
+  geom_line(aes(color=N))
+```
+
+From the graph, we can tell when we double the size of samples, it doesn't necessarily double the power. Power increases with sample size and with rho. This is the case here, as Pearson’s correlation is well behaved for bivariate normal data.For a given expected population correlation and a desired long run power value, we can use interpolation to find out the matching sample size.
+
+Alternatively, for a given sample size and a desired power, we can determine the minimum effect size we can hope to detect. For instance, given n = 50 and a desired power of at least 38%, the minimum effect size we can detect is 0.85.
+
+
+
+
+
+

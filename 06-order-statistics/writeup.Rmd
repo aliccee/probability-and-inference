@@ -1,0 +1,160 @@
+---
+title: "Which quantiles of a continuous distribution can one estimate with more precision?"
+output: html_notebook
+---
+
+The median is an important quantity in data analysis. It represents the middle value of the data distribution. 
+Estimates of the median, however, have a degree of uncertainty because (a) the estimates are calculated from a finite sample and (b) the data distribution of the underlying data is generally unknown. One important roles of a data scientist is to quantify and to communicate the degree of uncertainty in his or her data analysis.
+
+
+Q1: Begin with the median from a sample of N=200 from the standard normal distribution. Write an R function that is the density function for the median in this sample. Note that the 100th order statistic is approximately the median, and use the order statistic formula discussed in class. Generate a plot of the function.
+
+```{r}
+dorder <- function(x){
+  100*
+    choose(200, 100)*
+    pnorm(x)^(100-1)*
+    (1-pnorm(x))^(200-100)*
+    dnorm(x)
+}
+```
+
+Now we can plot the density function of 100th order statistics in 200 normal distribution variables.
+
+```{r}
+curve(dorder(x),from= -1, to = 1)
+```
+
+Q2:Write an R function that is the probability function for the median in this sample. Use the order statistic formula discussed in class. Generate a plot of the function.
+```{r}
+porder <- function(x){
+  pbinom(100-1, 200, pnorm(x), lower.tail = FALSE)
+}
+curve(porder(x),from = -1, to = 1)
+```
+
+Q3:Write an R function that is the quantile function for the median in this sample. (You have several options for how to write this function.) Generate a plot of the function.
+
+```{r}
+x_seq <- seq(0.01,0.99,0.01)
+
+qorder <- function(p){
+  out <- p
+  for(i in seq_along(p)){
+    out[i] <- uniroot(function(x){porder(x) - p[i]}, c(-100,100))$root
+  }
+  out
+}
+
+plot(x=x_seq,y=qorder(x_seq))
+```
+
+Q4:Simulate the sampling distribution for the median as you did in the previous deliverable. Create a plot of the empirical CDF (ECDF). Overlay the plot of the ECDF with a plot of the CDF.
+```{r}
+N <- 200
+M <- 5000
+out <- array(rnorm(M*N), c(M,N))
+meds <- apply(out,1,median)
+e1 <- ecdf(meds)
+
+plot(e1, do.point=F)
+curve(porder, add = TRUE, col = "blue", lwd = 3)
+legend("topleft", c("ECDF","CDF"), lwd = 3, col = c("black","blue"), bty = "n")
+```
+
+They are pretty close. And if we increase the length of “sml_l”, known as simulation by a larger sample set, we can find the line is closer than now.
+
+Q5:Using the simulated sampling distribution from the previous question, create a histogram (on the density scale). Overlay the histogram with a plot of the density function.
+
+Now we can use the sample we generated before to create the histgram plot and density curve.
+
+```{r}
+hist(meds, breaks = 100, freq = FALSE)
+curve(dorder, add = TRUE, col = "blue", lwd = 3)
+legend("topleft", c("epdf","pdf"), lwd = 3, col = c("black","blue"), bty = "n")
+```
+
+Q6:One very common way to compare a random sample to a theoretical candidate distribution is the QQ plot. It is created by ploting quantiles of the theoretical distribution on the x-axis and empirical quantiles from the sample on the y-axis.
+
+If theoretical and sample quantiles come from the same distribution, then the plotted points will fall along the line y=x, approximately. Here are two examples when the sample and theoretical quantiles came from the same distribution.
+
+```{r}
+# p <- ppoints(200)
+# x <- qorder(p)
+# y <- quantile(rnorm(200), probs = p)
+# 
+
+random_sample <- rexp(200)
+q_candidate <- qexp
+points <- ppoints(200)
+x <- q_candidate(points)
+y <- quantile(random_sample, probs = points)
+
+
+plot(x,y, asp = 1, xlab = "Theoretical quantile", ylab = "Sample quantile")
+abline(0,1)
+```
+
+
+
+Q7:Modify the dorder, porder, and qorder functions so that the functions take a new parameter k (for the kth order statistic) so that the functions will work for any order statistic and not just the median. Generate the QQ plot for simulated data from the sampling distribution of the sample max and the theoretical largest order statistic distribution.
+
+Now change the k value form 100 to 200, so it won’t be close to median, but might be close to 100% position of the data.
+
+
+```{r}
+dorder <- function(x, k=200, n=N){
+  k*
+    choose(n, k)*
+    (pnorm(x))^(k-1)*
+    (1-pnorm(x))^(n-k)*
+    dnorm(x,)
+}
+
+porder <- function(x, k=200, n=N){
+# Slide 54 of transformations & order-statistics  
+  pbinom(k-1, n, pnorm(x), lower.tail = FALSE)
+}
+
+qorder <- function(p){
+  out <- p
+  for(i in seq_along(p)){
+    out[i] <- uniroot(function(x){porder(x) - p[i]}, c(-100,100))$root
+  }
+  out
+}
+```
+
+```{r}
+sml_l <- rep(NA,500)
+for(i in seq_along(sml_l)){
+  sml_l[i] <- max(rnorm(N))
+}
+
+random_sample <- sml_l
+qorder
+
+p <- ppoints(N)
+x <- qorder(p)
+y <- quantile(random_sample, probs = p)
+
+plot(x,y, asp = 1, xlab = "Theoretical quantile", ylab = "Sample quantile")
+abline(0,1)
+```
+the quantiles matched well.
+
+Q8:Modify the dorder, porder, and qorder functions so that the functions take new parameters dist and … so that the functions will work for any continuous distribution that has d and p functions defined in R.Use the newly modified functions to plot the probability and density functions for the sample min (N = 200).
+
+Here, we will just change the k value from 200 to 1.
+```{r}
+# par(mfrow = c(2,1))
+curve(porder(x, 1, 200), -5,0, ylab = "Probability", xlab = "min", lwd = 3)
+curve(dorder(x, 1, 200), -5,0, ylab = "Density", xlab = "min", lwd = 3)
+par(mfrow = c(2,1))
+
+```
+
+
+Conclusion:
+
+When the estimated distribution is match the original real distribution, the QQ plot should be similar to the y = x line. And we can use uniroot() function to get distribution function.

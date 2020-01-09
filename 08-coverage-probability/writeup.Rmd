@@ -1,0 +1,180 @@
+---
+title: "Coverage probability"
+author: "Alice Wang"
+date: "9/15/2019"
+output: 
+  html_document: 
+    code_folding: hide
+    theme: cosmo
+    toc: yes
+    toc_depth: 5
+    toc_float: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+Coverage probability is an important operating characteristic of methods for constructing interval estimates, particularly confidence intervals.
+
+The destination of this blog is that performing a simulation to calculate the coverage probability of the 95% confidence interval of the median when computed from FXmle.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE)
+knitr::opts_chunk$set(echo = TRUE)
+require(stats4)
+library(tidyverse)
+```
+
+### Step 1
+generate a sample of size N from a known distribution
+construct a confidence interval.
+
+Set the sample as 201, use the standard normal distribution. Let N= 201.
+
+```{r}
+N <- 201
+sample <- rnorm(201)
+median(sample)
+```
+
+We got the median of our sample which is 0.04647717.
+
+Then use the MLE to estimate the distribution.
+```{r}
+nll <- function(mean, sd) {
+  fs <- dnorm(sample,
+              mean = mean,
+              sd = sd,
+              log = TRUE)
+  - sum(fs, na.rm = T)
+}
+
+fit <- stats4::mle(
+  nll,
+  start = list(mean = 0, sd = 1),
+  method = "L-BFGS-B",
+  lower = c(0, 0.01)
+)
+```
+
+
+```{r}
+coef(fit)
+```
+According to the result of MLE, we got the estimated mean and standard deviation of our sample distribution.
+The estimated mean is 0.05130276 and the estimated standard deviation is 0.92168751.
+
+```{r}
+sample_mean <- coef(fit)[[1]]
+sample_sd <- coef(fit)[[2]]
+```
+
+### Step 2
+In the previous step, we got the estimated mean and standard deviation. Based on the parameter, we can generate new distributions to simulate the original distribution. Now we need to get the median of the new distribution. We can get the distribution of median of the estimated distribution by repeating the process.
+
+```{r}
+median_list <- rep(NA, 500)
+for (i in seq_along(median_list)) {
+  median_list[i] <-
+    median(rnorm(N, mean = sample_mean, sd = sample_sd))
+}
+hist(median_list)
+```
+
+
+### Step 3
+Use quantile() function to get the 95% confidence interval for the median distribution. 
+```{r}
+sample_quantile95 <- quantile(median_list, c(0.025, 0.975))
+sample_quantile95
+```
+
+
+### Step 4
+Create a matrix to save the distributions we are going to generate. Every column is one distribution. Than use the method in the previous steps, generate all of the distributions.
+```{r}
+samples <- matrix(nrow = N, ncol = 1000)
+for (i in 1:ncol(samples)) {
+  samples[, i] <- rnorm(N)
+}
+
+coef <- matrix(nrow = 2, ncol = ncol(samples))
+for (i in 1:ncol(samples)) {
+  coef[1, i] <- mean(samples[, i]) 
+  coef[2, i] <- sd(samples[, i]) 
+}
+```
+
+matrix of the 95% confidence interval.
+```{r}
+quantile95_list <- matrix(nrow = 2, ncol = ncol(samples))
+```
+
+For each pair of estimated parameters, create a eatimated distribution, then get the median number. Repeat the process for 201 times, get the 95% confidence interval and store them in the matrix.
+```{r}
+for (j in 1:ncol(samples)) {
+  median_list <- rep(NA, N)
+  for (i in seq_along(median_list)) {
+    norm_dist <- rnorm(N, mean = coef[1, j], sd = coef[2, j])
+    median_list[i] <- median(norm_dist)
+  }
+  quantile95 <- quantile(median_list, c(0.025, 0.975))
+  quantile95_list[1, j] <- quantile95[[1]]
+  quantile95_list[2, j] <- quantile95[[2]]
+}
+```
+
+In order to calculate the coverage probability, we can store all of the results into a vector. And by definition, the coverage probability is the number of successful capture divided by the number of distribution.
+
+```{r}
+interest <- rep(NA, ncol(samples))
+for (i in seq_along(interest)) {
+  interest[i] <-
+    case_when(
+      quantile95_list[1, i] > 0 | quantile95_list[2, i] < 0 ~ 0,
+      quantile95_list[1, i] <= 0 &
+        quantile95_list[2, i] >= 0 ~ 1,
+    )
+}
+coverage_probability <- sum(interest) / length(interest)
+sum(interest)
+```
+
+which means... coverage probability equals to...
+```{r}
+coverage_probability
+```
+
+```{r}
+sum(quantile95_list[2,] < 0)
+sum(quantile95_list[1,] > 0)
+```
+
+### Step 5
+
+In order to make the results more intuitive, we can use geom_linerange() function in ggplot package to draw the 95% confidence interval. And set the 95% confidence interval which did not capture the real mean of original distribution, set “0” as a red line.
+
+```{r}
+quantile95_df <- as.data.frame(t(quantile95_list))
+quantile95_df["sample_num"] <- seq(1:ncol(samples))
+quantile95_df["interest"] <- interest
+ggplot(quantile95_df) +
+  geom_linerange(aes(x = sample_num,
+                     ymin = V1,
+                     ymax = V2),
+                 color = case_when(interest == 1 ~ "blue",
+                                   interest == 0 ~ "red")) +
+  geom_hline(yintercept = 0,
+             color = "gray",
+             alpha = 0.7) +
+  coord_flip() +
+  theme_bw()
+```
+
+### Step 6
+Q: Describe how you might change the simulation to learn more about the operating characteristics of your chosen method for constructing the 95% confidence interval.
+
+A: I might want to use larger a distribution, for example, set the N to 5000 or 10000 by the inference of CLT. Besides, I might calculate the other quantile of the distributions to find out if there is any difference. In addition, I might want to test different distribution other than standard normal distribution, such as gamma or beta distribution.
+
+I expect CLT work better with larger sample sizes and less skewness based on its definition. Even though there'are no striking differences in my plot, I can still see some trends.
+
+

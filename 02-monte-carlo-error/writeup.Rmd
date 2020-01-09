@@ -1,0 +1,85 @@
+---
+title: "Monte-Carlo-Error"
+author: "Alice Wang"
+---
+
+### What is simulation?
+It can be refered to modeling. It uses a probability experiment to mimic a rel-life situation by using random numbers. One example is the Monte Carlo method.
+
+### What is Error
+
+Error is a recoqnizable deficiency in any phase or activity of simulation that is not due to lack of knowledge.
+
+Understanding error is imperative to the succesful and responsible use of data simulations. One needs to understand the limitations of their work in order to confidently and accurately convey their findings. We are going to spend some time exploring simulation error so that we can be better informed when presenting our data.
+
+
+Specifically, there are two primary ways in which simulation error is measured. Absolute Error refers to the mathematical difference between the estimated probability (P`) and the actual probability (P). Relative Error divides the absolute error by the actual probability.
+
+Absolute error = |P` - P|
+
+Relative error = |P` - P| / P
+
+
+## Why is important to know simulation?
+The simulation modeling provides valuable solutions by giving clear insights into complex systems. And also, it allows us to observe an operation through simulation without actually performing that operation. Simulation software is used widely to design equipment so that the fianl product will ba as close to design specs as possible without expensive in process modification.
+
+## Example
+
+```{r, echo=FALSE}
+require(magrittr)
+library(ggplot2)
+```
+
+```{r,cache=TRUE, echo=FALSE}
+P <- c(0.01, 0.05, 0.10, 0.25, 0.50)
+R <- 2^(2:15)
+abserr <- matrix(NA,length(R),length(P))
+relerr <- matrix(NA,length(R),length (P))
+
+for(i in 1:length(P)) {
+  for(j in 1:length(R)) {
+    abserr[j,i] <- mean(abs((rbinom(10000,R[j],P[i])/R[j])-P[i]))
+    relerr[j,i] <- abserr[j,i]/P[i]
+  }
+}
+plot(abserr[,1]~log2(R),ylim=c(0,0.2),xlab="log2(N)",ylab="Absolute error",pch=16,type="b",axes=F)
+axis(1, 2:15, 2^(2:15))
+axis(2)
+box()
+par(new=T)
+plot(abserr[,2]~log2(R),ylim=c(0,0.2),axes=F,xlab="",ylab="",pch=16,type="b",col="red3")
+par(new=T)
+plot(abserr[,3]~log2(R),ylim=c(0,0.2),axes=F,xlab="",ylab="",pch=16,type="b",col="darkgreen")
+par(new=T)
+plot(abserr[,4]~log2(R),ylim=c(0,0.2),axes=F,xlab="",ylab="",pch=16,type="b",col="blue3")
+par(new=T)
+plot(abserr[,5]~log2(R),ylim=c(0,0.2),axes=F,xlab="",ylab="",pch=16,type="b",col="orange")
+legend(10,0.2,legend=c("True prob. = 0.50","True prob. = 0.25","True prob. = 0.10","True prob. = 0.05","True prob. = 0.01"),pch=16,col=c("orange","blue3","darkgreen","red3","black"),lty=1)
+
+```
+While there are some interesting patterns at different sample sizes, the most important thing to note is how as the sample size increases the absolute error decreases. You will also note, that smaller our predicted value the smaller our absolute error.
+
+
+
+
+```{r,cache=TRUE,echo=FALSE}
+plot(relerr[,1]~log2(R),ylim=c(0,2),xlab="log2(N)",ylab="Relative error",pch=16,type="b",axes=F)
+axis(1, 2:15, 2^(2:15))
+axis(2)
+box()
+par(new=T)
+plot(relerr[,2]~log2(R),ylim=c(0,2),axes=F,xlab="",ylab="",pch=16,type="b",col="red3")
+par(new=T)
+plot(relerr[,3]~log2(R),ylim=c(0,2),axes=F,xlab="",ylab="",pch=16,type="b",col="darkgreen")
+par(new=T)
+plot(relerr[,4]~log2(R),ylim=c(0,2),axes=F,xlab="",ylab="",pch=16,type="b",col="blue3")
+par(new=T)
+plot(relerr[,5]~log2(R),ylim=c(0,2),axes=F,xlab="",ylab="",pch=16,type="b",col="orange")
+legend(10,2,legend=c("True prob. = 0.50","True prob. = 0.25","True prob. = 0.10","True prob. = 0.05","True prob. = 0.01"),pch=16,col=c("orange","blue3","darkgreen","red3","black"),lty=1)
+```
+
+Opposite to absolute error you will notice the smaller the predicted value the larger the relative error. But similar to absolute error, as our sample size grows both relative and absolute error decrease.
+
+Depending on the project, an acceptable error rate will need to be determined, and based on that you can look into the necessary sample size to reach an error that you are happy with.
+
+

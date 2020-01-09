@@ -1,0 +1,193 @@
+---
+title: "How Important is Home-Field Advantage?"
+author: "Alice"
+date: "9/15/2019"
+output: 
+  html_document: 
+    code_folding: hide
+    theme: cosmo
+    toc: yes
+    toc_depth: 5
+    toc_float: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+## Intro of Home field advantage
+
+Today, we are going to talk about home field advantage. It refers to the team that will host the greater number of games in a best-of-five or best-of-seven series, if the series goes to the limit.  For example, it is the edge the Braves may have over the Yankees when the head-to-head match-up is in Atlanta. It is the advantage the Yankees may have when the head-to-head match-up is in New York.
+
+In fact, the home field is a clear  advantage in every sport because:
+
+1.the host team benefits from better knowledge of the field on which the game is played
+
+2.the host team have a partisan crowd cheering it on
+
+3.the visiting team are tired of travelling 
+
+4.referee bias in high-leverage situation
+
+
+It is almost the common sense that the home-field advantage does exist. Let's take a look at how much of an impact does it have on winning the world series by doing some calculation. 
+
+## Braves(ATL) VS Yankees(NYC)
+
+### Setup
+Suppose that the Braves and the Yankees are teams competing in the World Series.
+The table below has the two possible schedules for each game of the series. 
+
+(NYC = New York City, ATL = Atlanta)
+
+| Overall advantage | Game 1 | Game 2 | Game 3 | Game 4 | Game 5 | Game 6 | Game 7 |
+|:-----------------:|:------:|:------:|:------:|:------:|:------:|:------:|:------:|
+|       Braves      |   ATL  |   ATL  |   NYC  |   NYC  |   NYC  |   ATL  |   ATL  |
+|      Yankees      |   NYC  |   NYC  |   ATL  |   ATL  |   ATL  |   NYC  |   NYC  |
+
+ Let *P*<sub>*B*</sub> be the probability that the Braves win a
+    single head-to-head match-up with the Yankees, under the assumption
+    that home field advantage doesn’t exist. Let
+    *P*<sub>*B*</sub><sup>*H*</sup> denote the probability that the
+    Braves win a single head-to-head match-up with the Yankees as the
+    home team (H for home). Let *P*<sub>*B*</sub><sup>*A*</sup> denote
+    the probability that the Braves win a single head-to-head match-up
+    with the away team (A for away).
+
+| Game location |    No advantage   | Advantage                                                            |
+|:-------------:|:-----------------:|:---------------------------------------------------------------------|
+|      ATL      | *P*<sub>*B*</sub> | *P*<sub>*B*</sub><sup>*H*</sup> = *P*<sub>*B*</sub> \* 1.1           | 
+|      NYC      | *P*<sub>*B*</sub> | *P*<sub>*B*</sub><sup>*A*</sup> = 1 − (1 − *P*<sub>*B*</sub>) \* 1.1 |
+
+## Questions
+### 1.Compute analytically the probability that the Braves win the world series when the sequence of game locations is {NYC, NYC, ATL, ATL, ATL, NYC, NYC}. Calculate the probability with and without home field advantage when PB = 0.55. What is the difference in probabilities?
+
+First, load the .csv file to make sure what’s the situations we need to calculate, which represents the data we will generate later.
+
+```{r}
+require(dplyr)
+require(data.table)
+library(ggplot2)
+```
+
+```{r}
+# Get all possible outcomes
+apo <- fread("all-possible-world-series-outcomes.csv")
+```
+
+And we need to define a sequence of game locations. This time, the sequence should be {NYC, NYC, ATL, ATL, ATL, NYC, NYC}. As a result of that the Braves is a Atlanta team, we use 1 to represent Atlanta and use 0 to represent NYC.
+```{r}
+# Home field indicator
+hfi <- c(0,0,1,1,1,0,0) #{NYC, NYC, ATL, ATL, ATL, NYC, NYC}
+```
+Now we use 0.55 to define the PB and generate other probabilities by PB as we talked before.
+```{r}
+# P_B
+pb <- 0.55
+advantage_multiplier <- 1.1 # Set = 1 for no advantage
+pbh <- pb * advantage_multiplier
+pba <- 1 - (1 - pb) * advantage_multiplier
+```
+
+
+In this part, we will use the parameters we defined above. In every row of data.table, we use the different probabilities which influenced by home field advantage to calculate the overall probabilties of each situation.
+```{r}
+# Calculate the probability of each possible outcome
+apo[, p := NA_real_] # Initialize new column in apo to store prob
+for(i in 1:nrow(apo)){
+  prob_game <- rep(1, 7)
+  for(j in 1:7){
+    p_win <- ifelse(hfi[j], pbh, pba)
+    prob_game[j] <- case_when(
+        apo[i,j,with=FALSE] == "W" ~ p_win
+      , apo[i,j,with=FALSE] == "L" ~ 1 - p_win
+      , TRUE ~ 1
+    )
+  }
+  apo[i, p := prod(prob_game)] # Data.table syntax
+}
+```
+
+Then we output the probability of that the Braves wins the World Series under the influence of home field advantage.
+
+```{r}
+# Probability of overall World Series outcomes
+p_home <- purrr::flatten_dbl(apo[, sum(p), overall_outcome][1,2])
+p_home
+```
+The probability is 0.604221.
+
+Then we can calculate the probability when there is no home field advantage.
+```{r}
+p_nohome <- 1 - pbinom(3, 7, 0.55)
+p_nohome
+```
+The probabilty is 0.6082878. It is obvious that when home field advantage exists, the probabity that the Braves win the World Series (0.604221) is slightly lower than the probabity without home field advantage. Given PB=0.55, the probability of the Braves winning the World Series with a home field advantage is  -0.4066825a which is smaller than the probability of the Braves winning the world Series without a home field advantage.
+
+### 2. Calculate the same probabilities as the previous question by simulation.
+
+In this part, we will use simulation to test the probability.
+
+Given the location sequence, we use different winning probabilities of head to head games and random generate the result of each game. Repeat the process 100000 times, we can get the approximate solution of the probabilty with home field advantage influence.
+
+```{r}
+set.seed(314)
+sml_list_h <- rep(NA, 100000)
+for (i in seq_along(sml_list_h)){
+  round <- rep(NA,7)
+  for(j in 1:7){
+    p_win <- ifelse(hfi[j], pbh, pba)
+    round[j] <- rbinom(1,1,p_win)
+  }
+  sml_list_h[i] <- ifelse(sum(round)>=4, 1, 0)
+}
+mean_sml_h <- mean(sml_list_h)
+mean_sml_h
+```
+
+Now we can get the approximate solution, 0.60308, which is a little different from 0.604221.
+
+Now, let’s simulate the situation without home field advantage influence. It’s easy because we only need to make p_win as a constant value.
+
+```{r}
+set.seed(314)
+sml_list_nh <- rep(NA, 100000)
+for (i in seq_along(sml_list_nh)){
+  round <- rep(NA,7)
+  for(j in 1:7){
+    p_win <- 0.55
+    round[j] <- rbinom(1,1,p_win)
+  }
+  sml_list_nh[i] <- ifelse(sum(round)>=4, 1, 0)
+}
+mean_sml_nh <- mean(sml_list_nh)
+mean_sml_nh
+```
+### 3. What is the absolute and relative error for your simulation in the previous question?
+Absolute error = |p̂ −p|
+
+Relative error = |p̂ −p|/p.
+
+```{r}
+abs_error_h <- abs(mean(sml_list_h) - p_home)
+rel_error_h <- abs(mean(sml_list_h) - p_home)/mean(sml_list_h)
+abs_error_h
+```
+
+```{r}
+rel_error_h
+```
+
+Therefore, given home field advantage the absolute error is 0.001141. The relative error is 0.0018919.
+
+```{r}
+abs_error_nh <- abs(mean(sml_list_nh) - p_nohome)
+rel_error_nh <- abs(mean(sml_list_nh) - p_nohome)/mean(sml_list_nh)
+abs_error_nh
+```
+
+
+```{r}
+rel_error_nh
+```
+
+Therefore, given no home field advantage the absolute error is 0.0015078. The relative error is 0.0024849.
+

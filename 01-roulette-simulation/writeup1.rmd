@@ -1,0 +1,220 @@
+---
+title: "'Martingale' Strrategy for the Roulette Game. Who's gonna win?"
+author: "Alice"
+date: "8/25/2019"
+output: html_notebook
+---
+
+A roulette table composed of 38 (or 37) evenly sized pockets on a wheel. The pockets are colored red, black, or green. The pockets are also numbered. Roulette is a game of chance in which a pocket is randomly selected. Gamblers may wager on several aspects of the outcome. For example, one may place a wager that the randomly selected pocket will be red or odd numbered or will be a specific number.
+
+
+Here are 38 pockets of which 2 are green, 18 are red, and 18 are black. The payout for a bet on black (or red) is $1 for each $1 wagered. This means that if a gambler bets $1 on black and the randomly selected pocket is black, then the gambler will get the original $1 wager and an additional $1 as winnings.
+
+
+```{r setup, include=FALSE}
+library(magrittr)
+library(tidyverse)
+library(lattice)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+A single play of the Martingale strategy
+Takes a state list, spins the roulette wheel, returns the state list with updated values (for example, budget, plays, etc)
+```{r}
+#' @param state A list with the following entries: 
+#'   B              number, the budget
+#'   W              number, the budget threshold for successfully stoping
+#'   L              number, the maximum number of plays 
+#'   M              number, the casino wager limit
+#'   plays          integer, the number of plays executed
+#'   previous_wager number, the wager in the previous play (0 at first play)
+#'   previous_win   TRUE/FALSE, indicator if the previous play was a win (TRUE at first play)
+#' @return The updated state list
+    one_play <- function(state){
+  
+    # Wager
+    proposed_wager <- ifelse(state$previous_win, 1, 2*state$previous_wager)
+    wager <- min(proposed_wager, state$M, state$B)
+    
+    # Spin of the wheel
+    red <- rbinom(1,1,18/38)
+    
+    # Update state
+    state$plays <- state$plays + 1
+    state$previous_wager <- wager
+    if(red){
+      # WIN
+      state$B <- state$B + wager
+      state$previous_win <- TRUE
+    }else{
+      # LOSE
+      state$B <- state$B - wager
+      state$previous_win <- FALSE
+    }
+  state
+}
+
+
+#' Stopping rule
+#'
+#' Takes the state list and determines if the gambler has to stop
+#' @param state A list.  See one_play
+#' @return TRUE/FALSE
+stop_play <- function(state){
+  if(state$B <= 0) return(TRUE)
+  if(state$plays >= state$L) return(TRUE)
+  if(state$B >= state$W) return(TRUE)
+  FALSE
+}
+```
+
+Now, we can simulate the results of one series of roulette plays using some predetermined settings for the above variables. In this case, we will set the player budget “B” to $200, the budget threshold for stopping “W” to $300, the maximum number of plays “L” to 1000, and the casino wager limit “M” to $100.
+
+The function below simulates a series of roulette plays that continue until the player budget drops to zero (the player lost all his/her money), the budget reaches $300, or the casino play limit is reached.
+
+```{r}
+#' Play roulette to either bankruptcy, success, or play limits
+#'
+#' @param B number, the starting budget
+#' @param W number, the budget threshold for successfully stoping
+#' @param L number, the maximum number of plays 
+#' @param M number, the casino wager limit
+#' @return A vector of budget values calculated after each play.
+one_series <- function(
+    B = 200
+  , W = 300
+  , L = 1000
+  , M = 100
+){
+
+  # initial state
+  state <- list(
+    B = B
+  , W = W
+  , L = L
+  , M = M
+  , plays = 0
+  , previous_wager = 0
+  , previous_win = TRUE
+  )
+  
+  # vector to store budget over series of plays
+  budget <- rep(NA, L)
+  
+  # For loop of plays
+  for(i in 1:L){
+    new_state <- state %>% one_play
+    budget[i] <- new_state$B
+    if(new_state %>% stop_play){
+      return(budget[1:i])
+    }
+    state <- new_state
+  }
+  budget    
+}
+
+# helper function
+get_last <- function(x) x[length(x)] 
+```
+
+
+### Simulating the strategy with multiple iterations
+
+In order to determine whether this is a safe strategy overall, we need to repeat the simulation several times to mimic multiple series of roulette plays. From this simulation, we can find the probability of earning a profit using the Martingale strategy.
+
+To illustrate the success of this strategy, we’ll also plot a few iterations of this simulation. Notice that each set of plays has a different result, in spite of identical starting conditions.
+
+Each result is similar in one key aspect, though. While earnings gains are always linear, losses are always exponential. Earning money takes several consecutive wins, while it is very easy to lose a lot of money very quickly. This fact alone marks the Martingale strategy as ineffective.
+```{r}
+# Simulation
+walk_out_money <- rep(NA, 1000)
+for(j in seq_along(walk_out_money)){
+  walk_out_money[j] <- one_series(B = 200, W = 300, L = 1000, M = 100) %>% get_last
+}
+par(mfrow=c(2,2),mai=c(.8,.8,.1,.1),las=2)
+plot(one_series(B = 200, W = 300, L = 1000, M = 100)-200,ylab="Earnings (dollars)",ylim=c(-200,100),xlab="",xlim=c(0,300),type="l")
+abline(h=100,lty=2,col="green4")
+abline(h=-200,lty=2,col="red3")
+legend(-25,110,"Win threshold",bty="n",cex=0.7,text.col="green4")
+legend(-25,-155,"Broke",bty="n",cex=0.7,text.col="red3")
+plot(one_series(B = 200, W = 300, L = 1000, M = 100)-200,ylab="",ylim=c(-200,100),xlab="",xlim=c(0,300),type="l")
+abline(h=100,lty=2,col="green4")
+abline(h=-200,lty=2,col="red3")
+plot(one_series(B = 200, W = 300, L = 1000, M = 100)-200,ylab="Earnings (dollars)",ylim=c(-200,100),xlab="Number of plays",xlim=c(0,300),type="l")
+abline(h=100,lty=2,col="green4")
+abline(h=-200,lty=2,col="red3")
+plot(one_series(B = 200, W = 300, L = 1000, M = 100)-200,ylab="",ylim=c(-200,100),xlab="Number of plays",xlim=c(0,300),type="l")
+abline(h=100,lty=2,col="green4")
+abline(h=-200,lty=2,col="red3")
+```
+One way to visualize this probability is by using a histogram. This particular figure displays the frequency of each result in terms of how much total money each simulated player left the casino with. With the settings as above, no player reached the maximum number of games allowed (1,000) before either going broke or reaching the stopping value ($300).
+
+
+As you can see, the results are roughly 50/50. Half of the players left the casino with $0, and half with $300.
+
+In fact, let’s calculate the average success rate for this strategy. What are your chances of leaving the casino with extra money using the Martingale strategy? In other words, who left the casino with more than their original $200? According to this simulation, just about half of players would be expected to leave the casino with a profit.
+```{r}
+# Walk out money distribution
+hist(walk_out_money, breaks = 100)
+
+# Estimated probability of walking out with extra cash
+mean(walk_out_money > 200)
+```
+
+What about earnings, though? What was the average profit in this simulation? By subtracting the initial $200 budget of each player from the average final total, we find that the Martingale strategy actually resulted in an average loss.
+```{r}
+# Estimated earnings
+mean(walk_out_money - 200)
+```
+From the histogram, many of the simulations meet our stopping rule of going bankrupt (B=0) or stopping when winning $300 (W=300). Only 6 simulations ended from meeting the stopping rule of playing 500 times (L=500).
+
+### Other Conditions
+Now increase B,see what is the change in the mean earning rate. While this certainly affects the magnitude of the earnings, the trends observed using the initial starting conditions remain. Note that the distribution of the results is also similar, quite close to 50/50.
+
+
+Use simulation.
+
+```{r}
+walk_out_money <- rep(NA, 1000)
+for(j in seq_along(walk_out_money)){
+  walk_out_money[j] <- one_series(B = 300, W = 400, L = 1000, M = 100) %>% get_last
+}
+
+par(mfrow=c(2,2),mai=c(.8,.8,.1,.1),las=2)
+plot(one_series(B = 300, W = 400, L = 1000, M = 100)-300,ylab="Earnings (dollars)",ylim=c(-300,100),xlab="",xlim=c(0,300),type="l")
+abline(h=100,lty=2,col="green4")
+abline(h=-300,lty=2,col="red3")
+legend(-25,120,"Win threshold",bty="n",cex=0.7,text.col="green4")
+legend(-25,-240,"Broke",bty="n",cex=0.7,text.col="red3")
+plot(one_series(B = 300, W = 400, L = 1000, M = 100)-300,ylab="",ylim=c(-300,100),xlab="",xlim=c(0,300),type="l")
+abline(h=100,lty=2,col="green4")
+abline(h=-300,lty=2,col="red3")
+plot(one_series(B = 300, W = 400, L = 1000, M = 100)-300,ylab="Earnings (dollars)",ylim=c(-300,100),xlab="Number of plays",xlim=c(0,300),type="l")
+abline(h=100,lty=2,col="green4")
+abline(h=-300,lty=2,col="red3")
+plot(one_series(B = 300, W = 400, L = 1000, M = 100)-300,ylab="",ylim=c(-300,100),xlab="Number of plays",xlim=c(0,300),type="l")
+abline(h=100,lty=2,col="green4")
+abline(h=-300,lty=2,col="red3")
+```
+```{r}
+hist(walk_out_money,breaks=100,xlab="Walk out money (dollars)",ylab="Frequency",main="Distribution of earnings, initial budget = $300")
+```
+
+
+
+
+## Evaluation: Benefits and risks
+
+We aim to secure higher wins from MARTINGALE strategy. However, after following a series of losses. Winnings are more secured when having unlimited bankrool which is not realistic. It is fairly clear that the carisnos impose limits on maximum bets. Even if the gambler has unlimited bankrool, he/she will still be stuck with the limitation and will not be able to cover huge loss. No matter what, casinos are the biggest winners in the end.
+
+### Limitations
+
+First of all, the casino limit on maximum wager. Besides, the arbitrary profit limits this study as well.
+
+
+
+
+
+
+
+
